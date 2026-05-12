@@ -1,27 +1,32 @@
 package shortlink
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
 	"math/rand"
 	"time"
 
-	"github.com/jackc/pgconn"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/redis/go-redis/v9"
 )
 
 // бизнес-логи
 type Service struct {
-	repo *Repository
+	repo  *Repository
+	cache *redis.Client
 }
 
 // конструктор
-func NewService(repo *Repository) *Service {
+func NewService(repo *Repository, cache *redis.Client) *Service {
 	return &Service{
-		repo: repo,
+		repo:  repo,
+		cache: cache,
 	}
 }
 
 // создаёт короткую ссылку
-func (s *Service) CreateShortLink(url string) (string, error) {
+func (s *Service) CreateShortLink(userID int, url string) (string, error) {
 	if url == "" {
 		return "", errors.New("url is empty")
 	}
@@ -31,7 +36,7 @@ func (s *Service) CreateShortLink(url string) (string, error) {
 	for i := 0; i < maxAttempts; i++ {
 		code := generateCode(6)
 
-		err := s.repo.Save(code, url)
+		err := s.repo.Save(userID, code, url)
 		if err == nil {
 			return code, nil
 		}
@@ -61,7 +66,40 @@ func (s *Service) CreateShortLink(url string) (string, error) {
 //}
 
 func (s *Service) GetLink(code string) (*ShortLink, error) {
-	return s.repo.GetByCode(code)
+	ctx := context.Background()
+
+	// пытаемся получить из Redis
+	cachedData, err := s.cache.Get(ctx, code).Result()
+	if err == nil {
+		var link ShortLink
+
+		err = json.Unmarshal(
+			[]byte(cachedData),
+			&link,
+		)
+		if err == nil {
+			return &link, nil
+		}
+	}
+
+	// если нет в Redis
+	link, err := s.repo.GetByCode(code)
+	if err != nil {
+		return nil, err
+	}
+
+	// сериализация
+	data, err := json.Marshal(link)
+	if err == nil {
+		_ = s.cache.Set(
+			ctx,
+			code,
+			data,
+			time.Hour,
+		).Err()
+	}
+
+	return link, nil
 }
 
 // генерация случайного кода
@@ -77,4 +115,50 @@ func generateCode(length int) string {
 	}
 
 	return string(b)
+}
+
+func (s *Service) GetUserLinks(
+	userID int,
+) ([]ShortLink, error) {
+	return s.repo.GetByUserID(userID)
+}
+
+func (s *Service) DeleteLink(
+	code string,
+) error {
+	// удаление из PostgreSQL
+	err := s.repo.SoftDelete(code)
+	if err != nil {
+		return err
+	}
+
+	// удаление из Redis
+	_ = s.cache.Del(
+		context.Background(),
+		code,
+	).Err()
+
+	return nil
+}
+
+func (s *Service) UpdateLink(
+	code string,
+	newURL string,
+) error {
+	// обновляем PostgreSQL
+	err := s.repo.UpdateURL(
+		code,
+		newURL,
+	)
+	if err != nil {
+		return err
+	}
+
+	// удаляем stale cache
+	_ = s.cache.Del(
+		context.Background(),
+		code,
+	).Err()
+
+	return nil
 }

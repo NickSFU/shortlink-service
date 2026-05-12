@@ -17,3 +17,9 @@ func (s *Service) Create(click *Click) error {
 func (s *Service) CountByLink(shortLinkID int) (int, error) {
 	return s.repo.CountByLink(shortLinkID)
 }
+
+func (s *Service) GetStats(
+	linkID int,
+) (*LinkStats, error) {
+	return s.repo.GetStats(linkID)
+}

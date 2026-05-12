@@ -10,3 +10,9 @@ type Click struct {
 	Referer     string
 	CreatedAt   time.Time
 }
+
+type LinkStats struct {
+	TotalClicks int
+	UniqueIPs   int
+	LastClickAt *time.Time `json:"last_click_at"`
+}

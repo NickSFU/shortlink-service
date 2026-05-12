@@ -6,16 +6,13 @@ import (
 	"net/http"
 
 	"github.com/NickSFU/shortlink-service/internal/entity/click"
+	"github.com/NickSFU/shortlink-service/internal/middleware"
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
 	service      *Service
 	clickService *click.Service
-}
-
-type statsResponse struct {
-	Clicks int `json:"clicks"`
 }
 
 func NewHandler(
@@ -32,6 +29,10 @@ type createRequest struct {
 	URL string `json:"url"`
 }
 
+type updateRequest struct {
+	URL string `json:"url"`
+}
+
 type createResponse struct {
 	Code string `json:"code"`
 }
@@ -39,14 +40,15 @@ type createResponse struct {
 // POST /shorten
 func (h *Handler) CreateShortLink(w http.ResponseWriter, r *http.Request) {
 	var req createRequest
-
+	userID := r.Context().
+		Value(middleware.UserIDKey).(int)
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
 
-	code, err := h.service.CreateShortLink(req.URL)
+	code, err := h.service.CreateShortLink(userID, req.URL)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -87,26 +89,173 @@ func (h *Handler) Redirect(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, link.OriginalURL, http.StatusFound)
 }
 
-func (h *Handler) GetStats(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) GetMyLinks(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	userID := r.Context().
+		Value(middleware.UserIDKey).(int)
+
+	links, err := h.service.GetUserLinks(userID)
+	if err != nil {
+		http.Error(
+			w,
+			"internal error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
+
+	_ = json.NewEncoder(w).Encode(links)
+}
+
+func (h *Handler) DeleteLink(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
 	code := chi.URLParam(r, "code")
 
 	link, err := h.service.GetLink(code)
 	if err != nil {
-		http.Error(w, "link not found", http.StatusNotFound)
+		http.Error(
+			w,
+			"link not found",
+			http.StatusNotFound,
+		)
 		return
 	}
 
-	count, err := h.clickService.CountByLink(link.ID)
+	userID := r.Context().
+		Value(middleware.UserIDKey).(int)
+
+	// ownership check
+	if link.UserID != userID {
+		http.Error(
+			w,
+			"forbidden",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	err = h.service.DeleteLink(code)
 	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
+		http.Error(
+			w,
+			"internal error",
+			http.StatusInternalServerError,
+		)
 		return
 	}
 
-	resp := statsResponse{
-		Clicks: count,
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) UpdateLink(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	code := chi.URLParam(r, "code")
+
+	link, err := h.service.GetLink(code)
+	if err != nil {
+		http.Error(
+			w,
+			"link not found",
+			http.StatusNotFound,
+		)
+		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	userID := r.Context().
+		Value(middleware.UserIDKey).(int)
 
-	_ = json.NewEncoder(w).Encode(resp)
+	// ownership check
+	if link.UserID != userID {
+		http.Error(
+			w,
+			"forbidden",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	var req updateRequest
+
+	err = json.NewDecoder(r.Body).
+		Decode(&req)
+	if err != nil {
+		http.Error(
+			w,
+			"invalid body",
+			http.StatusBadRequest,
+		)
+		return
+	}
+
+	err = h.service.UpdateLink(
+		code,
+		req.URL,
+	)
+	if err != nil {
+		http.Error(
+			w,
+			"internal error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *Handler) GetStats(
+	w http.ResponseWriter,
+	r *http.Request,
+) {
+	code := chi.URLParam(r, "code")
+
+	link, err := h.service.GetLink(code)
+	if err != nil {
+		http.Error(
+			w,
+			"link not found",
+			http.StatusNotFound,
+		)
+		return
+	}
+
+	userID := r.Context().
+		Value(middleware.UserIDKey).(int)
+
+	if link.UserID != userID {
+		http.Error(
+			w,
+			"forbidden",
+			http.StatusForbidden,
+		)
+		return
+	}
+
+	stats, err := h.clickService.GetStats(link.ID)
+	if err != nil {
+		http.Error(
+			w,
+			"internal error",
+			http.StatusInternalServerError,
+		)
+		return
+	}
+
+	w.Header().Set(
+		"Content-Type",
+		"application/json",
+	)
+
+	_ = json.NewEncoder(w).Encode(stats)
 }

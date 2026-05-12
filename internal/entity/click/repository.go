@@ -3,6 +3,8 @@ package click
 import (
 	"context"
 
+	"database/sql"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -60,4 +62,44 @@ func (r *Repository) CountByLink(shortLinkID int) (int, error) {
 	}
 
 	return count, nil
+}
+
+func (r *Repository) GetStats(
+	linkID int,
+) (*LinkStats, error) {
+	query := `
+		SELECT
+			COUNT(*) as total_clicks,
+			COUNT(DISTINCT ip) as unique_ips,
+			MAX(created_at) as last_click_at
+		FROM clicks
+		WHERE short_link_id = $1
+	`
+
+	var stats LinkStats
+	var lastClick sql.NullTime
+
+	err := r.db.QueryRow(
+		context.Background(),
+		query,
+		linkID,
+	).Scan(
+		&stats.TotalClicks,
+		&stats.UniqueIPs,
+		&lastClick,
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	if lastClick.Valid {
+		stats.LastClickAt = &lastClick.Time
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &stats, nil
 }

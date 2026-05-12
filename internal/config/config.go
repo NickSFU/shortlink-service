@@ -14,6 +14,7 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
+	RedisAddr  string
 	JWTSecret  string
 }
 
@@ -22,7 +23,6 @@ func Load() *Config {
 	if err != nil {
 		log.Println(".env file load error, using default env settings")
 	}
-
 	return &Config{
 		Port:       getEnv("PORT", "8080"),
 		DBHost:     getEnv("DB_HOST", "localhost"),
@@ -30,8 +30,8 @@ func Load() *Config {
 		DBUser:     getEnv("DB_USER", "postgres"),
 		DBPassword: getEnv("DB_PASSWORD", "postgres"),
 		DBName:     getEnv("DB_NAME", "shortlink"),
-
-		JWTSecret: getEnv("JWT_SECRET", "secret"),
+		RedisAddr:  getEnv("REDIS_ADDR", "localhost:6379"),
+		JWTSecret:  getEnv("JWT_SECRET", "secret"),
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/NickSFU/shortlink-service/internal/cache"
 	"github.com/NickSFU/shortlink-service/internal/config"
 	"github.com/NickSFU/shortlink-service/internal/db"
 	"github.com/NickSFU/shortlink-service/internal/router"
@@ -23,7 +24,12 @@ func Run() error {
 		log.Fatalf("failed to connect db: %v", err)
 	}
 	defer pool.Close()
-	router := router.NewRouter(pool)
+	redisClient := cache.NewRedis(cfg)
+
+	if err := cache.Ping(redisClient); err != nil {
+		log.Fatalf("redis error: %v", err)
+	}
+	router := router.NewRouter(pool, redisClient)
 
 	server := &http.Server{
 		Addr:         ":" + cfg.Port,

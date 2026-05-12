@@ -4,4 +4,5 @@ type ShortLink struct {
 	ID          int
 	Code        string
 	OriginalURL string
+	UserID      int
 }
