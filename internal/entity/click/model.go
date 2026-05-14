@@ -12,7 +12,10 @@ type Click struct {
 }
 
 type LinkStats struct {
-	TotalClicks int
-	UniqueIPs   int
+	TotalClicks int        `json:"total_clicks"`
+	UniqueIPs   int        `json:"unique_ips"`
 	LastClickAt *time.Time `json:"last_click_at"`
+
+	PeakHour   int    `json:"peak_hour"`
+	TopReferer string `json:"top_referer"`
 }

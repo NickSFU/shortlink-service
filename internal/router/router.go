@@ -19,6 +19,8 @@ func NewRouter(
 ) http.Handler {
 
 	r := chi.NewRouter()
+	// ratelimit
+	r.Use(middleware.RateLimit(cache, 100)) // число = количество запросов в минуту
 
 	// shortlink
 	shortRepo := shortlink.NewRepository(db)

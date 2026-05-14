@@ -67,6 +67,7 @@ func (r *Repository) CountByLink(shortLinkID int) (int, error) {
 func (r *Repository) GetStats(
 	linkID int,
 ) (*LinkStats, error) {
+
 	query := `
 		SELECT
 			COUNT(*) as total_clicks,
@@ -97,9 +98,39 @@ func (r *Repository) GetStats(
 		stats.LastClickAt = &lastClick.Time
 	}
 
-	if err != nil {
-		return nil, err
-	}
+	// peak hour
+	peakHourQuery := `
+		SELECT
+			EXTRACT(HOUR FROM created_at) as hour
+		FROM clicks
+		WHERE short_link_id = $1
+		GROUP BY hour
+		ORDER BY COUNT(*) DESC
+		LIMIT 1
+	`
+
+	_ = r.db.QueryRow(
+		context.Background(),
+		peakHourQuery,
+		linkID,
+	).Scan(&stats.PeakHour)
+
+	// top referer
+	topRefererQuery := `
+		SELECT referer
+		FROM clicks
+		WHERE short_link_id = $1
+		AND referer != ''
+		GROUP BY referer
+		ORDER BY COUNT(*) DESC
+		LIMIT 1
+	`
+
+	_ = r.db.QueryRow(
+		context.Background(),
+		topRefererQuery,
+		linkID,
+	).Scan(&stats.TopReferer)
 
 	return &stats, nil
 }
