@@ -8,3 +8,4 @@ CREATE TABLE short_links (
 );
 ALTER TABLE short_links
 ALTER COLUMN is_deleted SET DEFAULT false;
+

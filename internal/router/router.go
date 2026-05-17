@@ -17,8 +17,10 @@ func NewRouter(
 	db *pgxpool.Pool,
 	cache *redis.Client,
 ) http.Handler {
-
+	// router
 	r := chi.NewRouter()
+	// logger
+	r.Use(middleware.Logger)
 	// ratelimit
 	r.Use(middleware.RateLimit(cache, 100)) // число = количество запросов в минуту
 
